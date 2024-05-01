@@ -46,7 +46,8 @@ def main():
 
     ...
 
-    bot = telegram.Bot(token=TELEGRAM_TOKEN)
+    # Создаем объект класса бота
+    bot = ...
     timestamp = int(time.time())
 
     ...
