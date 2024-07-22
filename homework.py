@@ -14,7 +14,11 @@ PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-TOKEN_NAMES = ('PRACTICUM_TOKEN', 'TELEGRAM_TOKEN', 'TELEGRAM_CHAT_ID')
+TOKEN_NAMES = (
+    'Токен сервиса "Практикум.Домашка"',
+    'Токен Телеграм-бота',
+    'ID Телеграм-чата'
+)
 
 RETRY_PERIOD = 600
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
@@ -35,14 +39,17 @@ def check_tokens():
         if not token:
             logging.critical(
                 'Отсутствует обязательная переменная окружения: '
-                f'{TOKEN_NAMES[i]}. Программа принудительно остановлена.'
+                f'{TOKEN_NAMES[i]}. Программа принудительно остановлена'
             )
-            return False
-    return True
+        else:
+            logging.debug(f'{TOKEN_NAMES[i]} получен')
+
+    return all((PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID))
 
 
 def send_message(bot, message):
     """Отправляет сообщение в Telegram чат."""
+    msg_err = 'Возникла ошибка при отправке сообщения в Телеграм -'
     try:
         bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
@@ -50,9 +57,9 @@ def send_message(bot, message):
         )
         logging.debug('Сообщение успешно отправлено в Телеграм.')
     except apihelper.ApiException as error:
-        logging.error(
-            f'Возникла ошибка - {error} при отправке сообщения в Телеграм.'
-        )
+        logging.error(f'{msg_err} {error}')
+    except requests.RequestException as error:
+        logging.error(f'{msg_err} {error}')
 
     return True
 
@@ -71,27 +78,24 @@ def get_api_answer(timestamp):
         )
 
     if response.status_code != HTTPStatus.OK:
-        if response.status_code == HTTPStatus.UNAUTHORIZED:
+        msg_err = (
+            'Сервис недоступен. '
+            f'Код статуса запроса - {response.status_code}'
+        )
+        if response.status_code == HTTPStatus.UNAUTHORIZED or (
+            response.status_code == HTTPStatus.BAD_REQUEST
+        ):
+            if response.status_code == HTTPStatus.UNAUTHORIZED:
+                message_error = response.json().get('message')
+            else:
+                message_error = response.json().get('error').get('error')
             code_error = response.json().get('code')
-            message_error = response.json().get('message')
             raise ConnectionError(
-                'Сервис недоступен. '
-                f'Код ошибки сервиса: {code_error} - {message_error} '
-                f'Код статуса запроса: {response.status_code}'
-            )
-        elif response.status_code == HTTPStatus.BAD_REQUEST:
-            code_error = response.json().get('code')
-            message_error = response.json().get('error').get('error')
-            raise ConnectionError(
-                'Сервис недоступен. '
-                f'Код ошибки сервиса: {code_error} - {message_error}. '
-                f'Код статуса запроса: {response.status_code}'
+                f'{msg_err}. Код ошибки сервиса: '
+                f'{code_error} - {message_error}'
             )
         else:
-            raise ConnectionError(
-                'Сервис недоступен. '
-                f'Код статуса запроса: {response.status_code}'
-            )
+            raise ConnectionError(msg_err)
 
     return response.json()
 
@@ -119,7 +123,7 @@ def check_response(response):
             'Значение ключа "current_date" должно быть целочисленным.'
         )
 
-    return response.get('homeworks'), response.get('current_date')
+    return response.get('homeworks')
 
 
 def parse_status(homework):
@@ -153,19 +157,20 @@ def main():
     while True:
         try:
             response = get_api_answer(timestamp)
-            homework, timestamp = check_response(response)
+            homework = check_response(response)
             if homework:
                 message_to_telegram = parse_status(homework[0])
-                if message_to_telegram is not previous_message:
+                if message_to_telegram != previous_message:
                     if send_message(bot, message_to_telegram):
                         previous_message = message_to_telegram
+                        timestamp = response.get('current_date')
             else:
                 logging.debug('Статус домашки не изменился.')
 
         except Exception as error:
             error_message = f'Сбой в работе программы: {error}'
             logging.error(error_message)
-            if error_message is not previous_message:
+            if error_message != previous_message:
                 if send_message(bot, error_message):
                     previous_message = error_message
 
@@ -176,9 +181,14 @@ def main():
 if __name__ == '__main__':
     logging.basicConfig(
         level=logging.DEBUG,
-        filename='homework.log',
-        filemode='w',
         format='%(asctime)s, %(levelname)s, %(message)s, %(funcName)s',
-        encoding='utf-8'
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(
+                mode='w',
+                filename='homework.log',
+                encoding='utf-8'
+            )
+        ]
     )
     main()
