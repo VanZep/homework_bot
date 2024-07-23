@@ -56,9 +56,7 @@ def send_message(bot, message):
             text=message
         )
         logging.debug('Сообщение успешно отправлено в Телеграм.')
-    except apihelper.ApiException as error:
-        logging.error(f'{msg_err} {error}')
-    except requests.RequestException as error:
+    except (apihelper.ApiException, requests.RequestException) as error:
         logging.error(f'{msg_err} {error}')
 
     return True
