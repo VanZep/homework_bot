@@ -49,7 +49,6 @@ def check_tokens():
 
 def send_message(bot, message):
     """Отправляет сообщение в Telegram чат."""
-    msg_err = 'Возникла ошибка при отправке сообщения в Телеграм -'
     try:
         bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
@@ -57,7 +56,9 @@ def send_message(bot, message):
         )
         logging.debug('Сообщение успешно отправлено в Телеграм.')
     except (apihelper.ApiException, requests.RequestException) as error:
-        logging.error(f'{msg_err} {error}')
+        logging.error(
+            f'Возникла ошибка при отправке сообщения в Телеграм - {error}'
+        )
 
     return True
 
